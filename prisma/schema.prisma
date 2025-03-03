@@ -1,0 +1,127 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  hashedPassword String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  role           Role      @default(USER)
+
+  conversationIds String[]       @db.ObjectId
+  conversations   Conversation[] @relation(fields: [conversationIds], references: [id])
+
+  seenMessageIds String[]  @db.ObjectId
+  seenMessages   Message[] @relation("Seen", fields: [seenMessageIds], references: [id])
+
+  accounts         Account[]
+  messages         Message[]
+  Session          Session[]
+  VerficationToken VerficationToken?
+
+  @@index([createdAt])
+}
+
+enum AccountType {
+  EMAIL
+  GOOGLE
+  GITHUB
+  FACEBOOK
+}
+
+enum TokenType {
+  BEARER
+  JWT
+}
+
+model Account {
+  id                String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String      @db.ObjectId
+  type              AccountType // the type of the account, like email, google, facebook, etc
+  provider          String // the provider name, like google, facebook, etc
+  providerAccountId String // the id of the user in the provider, used to link the user with the provider
+  refresh_token     String?     @db.String // the refresh token used to get a new access token
+  access_token      String?     @db.String // the access token used to authenticate the user,used to get user data from the provider
+  expires_at        Int? // the time when the access token expires
+  token_type        TokenType? // the type of the token,like bearer,jwt, etc
+  scope             String? // the scope of the token, like email, profile, etc
+  id_token          String?     @db.String // the id token used to authenticate the user, used to get user data from the provider
+  session_state     String? // the session state of the token,like active, inactive, etc
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId]) // Preventing duplicate accounts
+}
+
+model Conversation {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  createdAt     DateTime @default(now())
+  lastMessageAt DateTime @default(now())
+  name          String?
+  isGroup       Boolean  @default(false)
+
+  messageIds String[]  @db.ObjectId
+  messages   Message[]
+
+  userIds    String[] @db.ObjectId
+  users      User[]   @relation(fields: [userIds], references: [id])
+  groupImage String?
+
+  @@index([createdAt]) // Sorting conversations by date will be much faster
+}
+
+model Message {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  body      String?
+  createdAt DateTime @default(now())
+  image     String?
+
+  seenIds String[] @db.ObjectId
+  seen    User[]   @relation("Seen", fields: [seenIds], references: [id])
+
+  conversationId String       @db.ObjectId
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String @db.ObjectId
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt]) //Optimize fetching recent messages in a conversation
+  @@index([senderId]) //Speed up queries searching messages by sender
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId
+  sessionToken String   @unique
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerficationToken {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId  String   @unique @db.ObjectId
+  token   String   @unique
+  expires DateTime
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
